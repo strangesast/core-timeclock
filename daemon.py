@@ -6,126 +6,73 @@
 import os
 import sys
 import pytz
-import pymongo
 import logging
 import asyncio
+import asyncpg
+import xmlrpc.client
 import aiomysql
 import configparser
 from typing import List
+from pathlib import Path
 from datetime import datetime, timedelta
-from pymongo.errors import BulkWriteError
-from pymongo import ReplaceOne
-from bson.codec_options import CodecOptions, TypeRegistry
+from aiohttp_xmlrpc.client import ServerProxy
 
 import models
-from util import get_async_rpc_connection, get_mysql_db, get_mongo_db, EmployeeShiftColor
 from calculate_rows import recalculate
+
+
+from pprint import pprint
 
 tz = pytz.timezone('US/Eastern')
 
 
-async def init(mongo_db, mysql_db):
-    col_names = await mongo_db.list_collection_names()
+def config_or_env(prefix: str, config: configparser.ConfigParser, keys: List[str]):
+    config = {k: os.environ.get(f'{prefix}_{k.upper()}') or config.get(k) for k in keys}
+    if 'port' in config:
+        config['port'] = int(config['port'])
+    return config
 
-    mysql_cursor = await mysql_db.cursor(aiomysql.DictCursor)
-    ops = []
 
-    await mysql_cursor.execute('select id,Code,Name,MiddleName,LastName,HireDate from tam.inf_employee')
-    async for employee in mysql_cursor:
-        employee_id = employee['id']
-        color = models.EmployeeShiftColor(employee_id % len(models.EmployeeShiftColor))
-        employee_id = str(employee_id)
-        employee['id'] = employee_id
-        employee['Color'] = color
-        ops.append(ReplaceOne({'id': employee_id}, employee, upsert=True))
-
-    await mongo_db.employees.create_index('id', unique=True)
-    await mongo_db.employees.bulk_write(ops)
-
-    if 'polls' not in col_names:
-        await mongo_db.create_collection('polls');
-        await mongo_db.polls.create_index('date', unique=True)
-
-    if 'state' not in col_names:
-        await mongo_db.create_collection('state', capped=True, size=100000)
-
-    # need to replace this to calculate duration on the fly
-    #await mongo_db.command({
-    #    'create': 'shifts',
-    #    'viewOn': 'components',
-    #    'pipeline': [
-    #        {
-    #            '$sort': { 'employee': 1, 'start': 1 }
-    #        },
-    #        {
-    #            '$match': { 'start': { '$ne': None }, }
-    #        },
-    #        {
-    #            '$addFields': {
-    #                #'end': { '$ifNull': [ '$end', '$$NOW' ] },
-    #                'state': {'$cond': [
-    #                    {'$ne': ['$end', None]},
-    #                    'complete',
-    #                    'incomplete'
-    #                ]}}
-    #        },
-    #        {
-    #            '$addFields': { 'duration': { '$subtract': [ '$end', '$start' ] } }
-    #        },
-    #        {
-    #            '$group': {
-    #                '_id': { 'date': '$date', 'employee': '$employee' }, 
-    #                'root': { '$first': '$$ROOT' }, 
-    #                #'start': { '$first': '$start' }, 
-    #                #'end': { '$last': '$end' }, 
-    #                'duration': { '$sum': '$duration' }, 
-    #                'components': { '$push': { 'start': '$start', 'end': '$end', 'duration': '$duration' } }
-    #            }
-    #        },
-    #        {
-    #            '$addFields': {
-    #                'root.components': '$components', 
-    #                'root.duration': { '$divide': [ '$root.duration', 3600000 ] }, 
-    #                'root.start': '$start', 
-    #                'root.end': '$end'
-    #            }
-    #        },
-    #        {
-    #            '$replaceRoot': { 'newRoot': '$root' }
-    #        },
-    #        #{
-    #        #    '$match': { 'duration': { '$lt': 24 } }
-    #        #}
-    #    ]})
-    await mongo_db.components.create_index('start')
-    await mongo_db.components.create_index('end')
-    await mongo_db.components.create_index('employee')
+async def sync_users(mysql_pool, pg_pool):
+    ''' sync amg mysql table w/ postgres, changing some column names
+    '''
+    # sync mysql & postgres users table
+    async with mysql_pool.acquire() as mysql_conn:
+        async with mysql_conn.cursor() as cursor:
+            await cursor.execute('select id,Name,MiddleName,LastName,HireDate,Code from tam.inf_employee')
+            async for id, first_name, middle_name, last_name, hire_date, code in cursor:
+                print(id, first_name, middle_name, last_name, hire_date, code)
 
 
 async def main(config):
-    # do some init stuff
-    # on interval, recheck
+    ''' connect to mysql/mariadb database
+    '''
+    mysql_config = config_or_env('MYSQl', config['MYSQL'], ['host', 'port', 'user', 'password', 'db'])
+    mysql_pool = await aiomysql.create_pool(**mysql_config)
 
-    mysql_client = await get_mysql_db(config['MYSQL'])
-    mongo_client = await get_mongo_db(config['MONGO'])
+    amg_keys = ['user', 'password', 'host', 'port']
+    amg_config = config_or_env('AMG', config['AMG'], amg_keys)
+    uri = 'http://{}:{}@{}:{}/API/Timecard.ashx'.format(*[amg_config[k] for k in amg_keys])
+    proxy = ServerProxy(uri) #, loop=loop)
 
-    amg_rpc_proxy = get_async_rpc_connection(config['AMG'])
+    pg_config = config_or_env('PG', config['POSTGRES'], ['host', 'port', 'user', 'password', 'database'])
+    pg_pool = await asyncpg.create_pool(**pg_config)
 
-    mongo_db = mongo_client.timeclock
-    logging.info('running init')
-    await init(mongo_db, mysql_client)
-    mysql_client.close()
+    await sync_users(mysql_pool, pg_pool)
+
+
 
     interval = timedelta(hours=1)
     buf = 60 # 1 minute. added to interval, or used as timeout between retries
 
     try:
         # update polls, wait for next poll update after interval
-        latest_poll = d.get('date') if (d := await mongo_db.polls.find_one({}, sort=[('date', pymongo.DESCENDING)])) else None
-        latest_sync = d.get('date') if (d := await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])) else None
+        #latest_poll = d.get('date') if (d := await mongo_db.polls.find_one({}, sort=[('date', pymongo.DESCENDING)])) else None
+        latest_poll = None
+        #latest_sync = d.get('date') if (d := await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])) else None
+        latest_sync = None
 
         while True:
-
             mysql_client = await get_mysql_db(config['MYSQL'])
             async with mysql_client.cursor() as mysql_cursor:
                 if latest_poll:
@@ -167,12 +114,14 @@ async def main(config):
 
     except asyncio.CancelledError:
         pass
-
     finally:
-        logging.info('cancelled')
-        await amg_rpc_proxy.close()
-        #mysql_client.close()
-        mongo_client.close()
+        pass
+
+    await amg_rpc_proxy.close()
+    mysql_pool.close()
+    await mysql_pool.wait_closed()
+
+
 
 
 async def update(mongo_db, proxy, min_date: datetime, now: datetime):
@@ -211,7 +160,8 @@ async def update(mongo_db, proxy, min_date: datetime, now: datetime):
                     if parent_shift is None:
                         raise Exception('missing parent_shift for component')
 
-                    peer_components = await mongo_db.components.find({'_id': {'$in': parent_shift['components']}}).sort([('start', pymongo.ASCENDING)]).to_list(None);
+                    #peer_components = await mongo_db.components.find({'_id': {'$in': parent_shift['components']}}).sort([('start', pymongo.ASCENDING)]).to_list(None);
+                    peer_components = None
 
                     if len(peer_components) != len(parent_shift['components']):
                         raise Exception('missing component for parent_shift')
@@ -241,7 +191,8 @@ async def update(mongo_db, proxy, min_date: datetime, now: datetime):
                     else:
                         shift_id = parent_shift['_id']
 
-                        peer_components = await mongo_db.components.find({'_id': {'$in': parent_shift['components']}}).sort([('start', pymongo.ASCENDING)]).to_list(None);
+                        #peer_components = await mongo_db.components.find({'_id': {'$in': parent_shift['components']}}).sort([('start', pymongo.ASCENDING)]).to_list(None);
+                        peer_components = None
     
                         if len(peer_components) != len(parent_shift['components']):
                             raise Exception('missing component for parent_shift')
@@ -267,7 +218,8 @@ async def update(mongo_db, proxy, min_date: datetime, now: datetime):
 
     values = []
     next_state = {}
-    current_state = await mongo_db.state.find_one({}, sort=[('date', pymongo.DESCENDING)])
+    #current_state = await mongo_db.state.find_one({}, sort=[('date', pymongo.DESCENDING)])
+    current_state = None
 
     value_ids = set()
     async for value in mongo_db.shifts.aggregate([
@@ -411,6 +363,9 @@ def get_sunday(dt: datetime):
 
 
 if __name__ == '__main__':
+    config_path = Path('config.ini')
+    if not config_path.is_file():
+        raise Exception('config file not found. copy from config.ini.example')
     config = configparser.ConfigParser()
     config.read('config.ini')
 
