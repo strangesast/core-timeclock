@@ -138,10 +138,14 @@ async def sync_timeclock(proxy, pg_pool, date_range):
         complete_date = datetime.utcnow()
         await pg_pool.fetch('REFRESH MATERIALIZED VIEW timeclock_shifts_view')
         await pg_pool.fetch('REFRESH MATERIALIZED VIEW timeclock_shift_groups')
-        await pg_pool.fetch('REFRESH MATERIALIZED VIEW timeclock_shift_group_shifts')
         record = await pg_pool.fetch('''
-          update timeclock_sync set complete_date=$2, job_status=$3,
-            update_count=$4, note=$5 where id=$1''', sync_id, complete_date, sync_job_status, count, error_msg)
+          update timeclock_sync set
+            complete_date=$2,
+            job_status=$3,
+            update_count=$4,
+            note=$5
+          where id=$1
+        ''', sync_id, complete_date, sync_job_status, count, error_msg)
 
     return complete_date
 
@@ -170,6 +174,12 @@ async def main(config):
     # postgres config
     pg_config = config_or_env('PG', config['POSTGRES'], ['host', 'port', 'user', 'password', 'database'])
     pg_pool = await asyncpg.create_pool(**pg_config)
+
+    await pg_pool.fetch('''
+      update timeclock_sync
+      set job_status = 'errored', complete_date = now(), note = 'unknown error'
+      where job_status = 'in_progress'
+    ''')
 
     await sync_employees(mysql_pool, pg_pool)
 
