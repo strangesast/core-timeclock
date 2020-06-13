@@ -27,3 +27,66 @@ from (
 	) t
 ) t order by date_start desc;
 ```
+
+
+# Create Machine Activity View
+```
+create view machine_execution_state_totals as select
+	value,
+	frac,
+	cnt
+from (
+	select
+		value,
+		sum(interval) as frac,
+		sum(1) as cnt
+	from (
+		select
+			timestamp,
+			value,
+			(next_timestamp - timestamp)::interval
+		from (
+			select *,
+			  lead(timestamp, 1) over (order by timestamp asc) as next_timestamp
+			from (
+				select
+					timestamp::timestamp as timestamp,
+					machine_id,
+					value
+				from (
+					select *, row_number() over (partition by timestamp, machine_id, value order by timestamp asc) as n
+					from machine_execution_state
+					order by timestamp asc
+				) t
+				where t.n = 1
+			) t
+		) t
+	) as t group by value
+) t
+```
+
+
+# Machine Activity Fractions
+```
+select
+	value,
+	extract (epoch from frac) / (extract (epoch from (select sum(frac) from machine_execution_state_totals))),
+	cnt
+from machine_execution_state_totals;
+```
+
+# Machine Activity Fractions with inverse
+```
+select
+	value,
+	p,
+	(100 - p),
+	cnt
+from (
+	select
+		value,
+		extract (epoch from frac) / (extract (epoch from (select sum(frac) from machine_execution_state_totals))) * 100 as p,
+		cnt
+	from machine_execution_state_totals
+) t
+```
