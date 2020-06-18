@@ -90,3 +90,20 @@ from (
 	from machine_execution_state_totals
 ) t
 ```
+
+# Average Cycle Time
+```
+select avg(diff), count(diff) from (
+	select
+		*,
+		ts1 - ts as diff
+	from (
+		select *, lead(ts, 1) over (order by timestamp) as ts1
+		from (
+			select *, timestamp::timestamp as ts from machine_execution_state
+		) t
+		order by ts desc
+	) t
+) t
+where value = 'ACTIVE' and diff > interval '1 minute'
+```
