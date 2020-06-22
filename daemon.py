@@ -150,6 +150,18 @@ async def sync_timeclock(proxy, pg_pool, date_range):
     return complete_date
 
 
+async def flag_shifts():
+    query = '''
+      select *
+      from (
+      	select id, employee_id, (case when date_stop is null then now() else date_stop end) - date_start as duration
+      	from timeclock_shifts
+      ) t
+      where t.duration > interval '12 hours'
+      order by t.duration desc
+    '''
+
+
 def reset_tz(dt: datetime):
     return tz.localize(dt).astimezone(pytz.UTC).replace(tzinfo=None)
 
