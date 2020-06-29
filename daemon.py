@@ -28,7 +28,9 @@ from pprint import pprint
 tz = pytz.timezone('US/Eastern')
 
 
-COLORS = ["#d73027", "#f46d43", "#fdae61", "#fee090", "#e0f3f8", "#abd9e9", "#74add1", "#4575b4"]
+#COLORS = ["#d73027", "#f46d43", "#fdae61", "#fee090", "#e0f3f8", "#abd9e9", "#74add1", "#4575b4"]
+#COLORS = ["#a6cee3", "#1f78b4", "#b2df8a", "#33a02c", "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00", "#cab2d6", "#6a3d9a"]
+COLORS = ["#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a"]
 
 async def sync_employees(mysql_pool, pg_pool):
     ''' sync amg mysql table w/ postgres, changing some column names
