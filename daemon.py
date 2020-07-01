@@ -4,32 +4,26 @@
 
 
 # init.py
-import os
 import sys
 import pytz
 import logging
 import asyncio
 import asyncpg
-import xmlrpc.client
 import aiomysql
 import configparser
-from typing import List
 from pathlib import Path
 from datetime import datetime, timedelta
 from aiohttp_xmlrpc.client import ServerProxy
 
 
-import models
+# TODO: reimplement this
 #from calculate_rows import recalculate
 from util import config_or_env
-
-from pprint import pprint
 
 tz = pytz.timezone('US/Eastern')
 
 
 #COLORS = ["#d73027", "#f46d43", "#fdae61", "#fee090", "#e0f3f8", "#abd9e9", "#74add1", "#4575b4"]
-#COLORS = ["#a6cee3", "#1f78b4", "#b2df8a", "#33a02c", "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00", "#cab2d6", "#6a3d9a"]
 COLORS = ["#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a"]
 
 async def sync_employees(mysql_pool, pg_pool):
@@ -109,8 +103,7 @@ async def sync_timeclock(proxy, pg_pool, date_range):
                     records = []
 
                     for employee_id, timecard in [(obj['EmployeeId'], timecard) for obj in timecards for timecard in obj['Timecards']]:
-                        punches = []
-                        date, is_manual, hours = timecard.get('Date'), timecard.get('IsManual'), timecard.get('Reg')
+                        date, is_manual = timecard.get('Date'), timecard.get('IsManual')
                 
                         (date_start, punch_start), (date_stop, punch_stop) = [(reset_tz(p['OriginalDate']), p['Id'])
                                     if (p := timecard.get(k))
@@ -152,6 +145,7 @@ async def sync_timeclock(proxy, pg_pool, date_range):
     return complete_date
 
 
+"""
 async def flag_shifts():
     query = '''
       select *
@@ -162,6 +156,7 @@ async def flag_shifts():
       where t.duration > interval '12 hours'
       order by t.duration desc
     '''
+"""
 
 
 def reset_tz(dt: datetime):
@@ -239,7 +234,7 @@ async def main(config):
         logging.info(f'{latest_sync=}')
 
         if latest_poll and latest_sync and latest_sync > latest_poll:
-            timeout_duration = d if (d := (latest_poll + interval - now).total_seconds()) > 0 else 60
+            timeout_duration = d if (d := (latest_poll + interval - now).total_seconds()) > 0 else buf
             logging.info(f'sleeping for {timeout_duration} seconds')
             await asyncio.sleep(timeout_duration)
             continue
