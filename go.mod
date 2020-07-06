@@ -8,4 +8,5 @@ require (
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/kolo/xmlrpc v0.0.0-20200310150728-e0350524596b
 	github.com/lib/pq v1.7.0
+	github.com/spf13/viper v1.7.0
 )

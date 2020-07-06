@@ -1,0 +1,19 @@
+amg_rpc:
+  user: admin
+  password: Force!2049
+  host: localhost
+  port: 3003
+
+amg_mysql:
+  host: localhost
+  db: tam
+  user: root
+  password: password
+  port: 3306
+
+db:
+  host: localhost  
+  user: postgres
+  password: password
+  database: development
+  port: 5432
