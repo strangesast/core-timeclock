@@ -80,6 +80,7 @@ async def sync_timeclock(proxy, pg_pool, date_range):
     '''
     count = 0
     sync_job_status = 'in_progress'
+    sync_successful = False
     error_msg = ''
 
     start_date = datetime.utcnow()
@@ -123,6 +124,7 @@ async def sync_timeclock(proxy, pg_pool, date_range):
                     logging.info(f'inserted/updated {len(records)} shifts')
 
                     min_date = window_date
+        sync_successful = True
         sync_job_status = 'complete'
 
     except Exception as e:
@@ -142,7 +144,7 @@ async def sync_timeclock(proxy, pg_pool, date_range):
           where id=$1
         ''', sync_id, complete_date, sync_job_status, count, error_msg)
 
-    return complete_date
+    return (sync_successful, complete_date)
 
 
 """
@@ -172,16 +174,19 @@ def get_sunday(dt: datetime):
 async def main(config):
     # mysql config
     mysql_config = config_or_env('MYSQl', config['MYSQL'], ['host', 'port', 'user', 'password', 'db'])
+    logging.debug(f'using mysql config: {mysql_config}')
     mysql_pool = await aiomysql.create_pool(**mysql_config, autocommit=True)
 
     # amg xmlrpc config
     amg_keys = ['user', 'password', 'host', 'port']
     amg_config = config_or_env('AMG', config['AMG'], amg_keys)
+    logging.debug(f'using amg config: {amg_config}')
     uri = 'http://{}:{}@{}:{}/API/Timecard.ashx'.format(*[amg_config[k] for k in amg_keys])
     proxy = ServerProxy(uri)
 
     # postgres config
     pg_config = config_or_env('PG', config['POSTGRES'], ['host', 'port', 'user', 'password', 'database'])
+    logging.debug(f'using postgres config: {pg_config}')
     pg_pool = await asyncpg.create_pool(**pg_config)
 
     await pg_pool.fetch('''
@@ -195,6 +200,7 @@ async def main(config):
     interval = timedelta(hours=1)
     buf = 60 # 1 minute. added to interval, or used as timeout between retries
 
+    latest_sync_attempt = None
 
     async with pg_pool.acquire() as pg_conn:
         record = await pg_conn.fetchrow('select date from timeclock_polls order by date desc limit 1');
@@ -229,24 +235,27 @@ async def main(config):
 
         now = datetime.utcnow()
 
-        logging.info(f'{now=}')
-        logging.info(f'{latest_poll=}')
-        logging.info(f'{latest_sync=}')
+        logging.debug(f'{now=}')
+        logging.debug(f'{latest_poll=}')
+        logging.debug(f'{latest_sync=}')
 
-        if latest_poll and latest_sync and latest_sync > latest_poll:
-            timeout_duration = d if (d := (latest_poll + interval - now).total_seconds()) > 0 else buf
+        if latest_poll and latest_sync_attempt and latest_sync_attempt > latest_poll:
+            if latest_sync is None or latest_sync < latest_poll:
+                timeout_duration = buf
+            elif (d := (latest_poll + interval - now).total_seconds()) > 0:
+                timeout_duration = d
+            else:
+                timeout_duration = buf
             logging.info(f'sleeping for {timeout_duration} seconds')
             await asyncio.sleep(timeout_duration)
             continue
 
         min_date = get_sunday((min(now, latest_sync) if latest_sync else (now - timedelta(days=365))).astimezone(tz)).replace(tzinfo=None)
 
-        latest_sync = await sync_timeclock(proxy, pg_pool, [min_date, now])
+        sync_successful, latest_sync_attempt = await sync_timeclock(proxy, pg_pool, [min_date, now])
 
-        #await mongo_db.state.insert_one({'date': now, 'values': values})
-        #await recalculate(mongo_db, min_date)
-
-        latest_sync = now
+        if sync_successful:
+            latest_sync = latest_sync_attempt
 
     await proxy.close()
     mysql_pool.close()
