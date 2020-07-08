@@ -210,7 +210,8 @@ async def main(config):
           where job_status=$1 and complete_date is not null
           order by complete_date desc
           limit 1''', 'complete');
-        latest_sync = None if record is None else record['complete_date']
+        latest_sync = record and record['complete_date']
+        latest_sync_attempt = latest_sync
 
     while True:
         async with mysql_pool.acquire() as mysql_conn, pg_pool.acquire() as pg_conn:

@@ -3,21 +3,21 @@ BIND_HOST = 0.0.0.0
 BIND_PORT = 8080
 
 [AMG]
-USERNAME = admin
+USER = user
 PASSWORD = password
 HOST = localhost
 PORT = 3003
 
 [MYSQL]
 HOST = localhost
-USER = root
+USER = user
 PASSWORD = password
-DB = tam
+DB = database
 PORT = 3306
 
-[MONGO]
+[POSTGRES]
 HOST = localhost
 USER = user
 PASSWORD = password
-DB = testing
-PORT = 27017
+DATABASE = database
+PORT = 5432
