@@ -133,8 +133,6 @@ async def sync_timeclock(proxy, pg_pool, date_range):
 
     finally:
         complete_date = datetime.utcnow()
-        await pg_pool.fetch('REFRESH MATERIALIZED VIEW timeclock_shifts_view')
-        await pg_pool.fetch('REFRESH MATERIALIZED VIEW timeclock_shift_groups')
         record = await pg_pool.fetch('''
           update timeclock_sync set
             complete_date=$2,
