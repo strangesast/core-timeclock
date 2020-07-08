@@ -68,7 +68,6 @@ if (GENERATE_MOCKING) {
         .map(_id => ({_id, total: 0, buckets: employeeIds.reduce((acc, id) => ({...acc, [id]: 0}), {})}))
         .sort((a, b) => b.total - a.total);
       for (const shift of shifts) {
-        const employeeId = shift.employee;
         for (const component of shift.components) {
           let start, end;
           ({start, end} = component);
@@ -79,7 +78,7 @@ if (GENERATE_MOCKING) {
           }
           ([start, end] = [start, end].map(g => Math.floor(g / 1800)));
           for (let i = start; i < end; i++) {
-            graphData[i % l].buckets[employeeId] += 1;
+            graphData[i % l].buckets[shift.employee.id] += 1;
             graphData[i % l].total += 1;
           }
         }

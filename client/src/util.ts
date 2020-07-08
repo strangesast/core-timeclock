@@ -88,7 +88,7 @@ export function formatDuration (f) {
 };
 
 export function formatName(empl: Employee) {
-  return `${empl.Name} ${empl.LastName}`;
+  return `${empl.first_name} ${empl.last_name}`;
 }
 
 export function addHours(date: Date, hours: number): Date {

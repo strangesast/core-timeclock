@@ -2,6 +2,7 @@ import * as d3 from 'd3';
 import * as models from './models';
 import * as faker from 'faker';
 
+const EMPLOYEE_COLORS = d3.quantize(d3.interpolateRainbow, 10);
 export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shift[], employees: {[id: string]: models.Employee}} {
   const employees: {[id: string]: models.Employee} = {},
     shifts: models.Shift[] = [];
@@ -26,13 +27,13 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
     employees[id] = {
       _id: id,
       id,
-      Code: ('0'.repeat(4) + (i + 1)).slice(-4),
-      Name: faker.name.firstName(),
-      MiddleName: String.fromCharCode((i % 26) + 65),
-      LastName: faker.name.lastName(),
-      HireDate: new Date(),
+      code: ('0'.repeat(4) + (i + 1)).slice(-4),
+      first_name: faker.name.firstName(),
+      middle_name: String.fromCharCode((i % 26) + 65),
+      last_name: faker.name.lastName(),
+      hire_date: new Date(),
       shift: { start, end, duration: 2.88e7 },
-      Color: models.EmployeeShiftColor[models.EMPLOYEE_SHIFT_COLORS[i % models.EMPLOYEE_SHIFT_COLORS.length]],
+      color: EMPLOYEE_COLORS[i % EMPLOYEE_COLORS.length],
     };
   }
   
@@ -158,7 +159,7 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
         y: 0,
         row: shiftRow,
         id: shiftId,
-        employee: employee.id,
+        employee: employee,
         state: models.ShiftState.Complete,
         components,
         started,

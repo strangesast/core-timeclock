@@ -42,10 +42,16 @@
     "yn": "^4.0.0"
   },
   "dependencies": {
+    "apollo-cache-inmemory": "^1.6.6",
+    "apollo-client": "^2.6.10",
+    "apollo-link-ws": "^1.0.20",
     "bson": "^4.0.3",
     "comlink": "^4.2.0",
     "d3": "^5.14.2",
     "d3-array": "^2.4.0",
-    "rxjs": "^6.5.4"
+    "graphql": "^15.3.0",
+    "graphql-tag": "^2.10.3",
+    "rxjs": "^6.5.4",
+    "subscriptions-transport-ws": "^0.9.16"
   }
 }

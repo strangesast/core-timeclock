@@ -15,6 +15,11 @@ module.exports = merge(baseConfig, {
     compress: true,
     disableHostCheck: true,
     proxy: {
+      '/v1/graphql': {
+        'target': 'http://localhost:8080',
+        'secure': false,
+        'ws': true
+      },
       '/socket': {
          target: 'ws://localhost:8082',
          ws: true
