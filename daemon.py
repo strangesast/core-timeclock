@@ -52,18 +52,20 @@ async def sync_employees(mysql_pool, pg_pool):
                     await pg_conn.fetch(q, user_record['id'], 'isPaidHourly')
                 else:
                     user_record = await pg_conn.fetchrow('select id from users where employee_id=$1', employee_id)
-                user_id = user_record['id']
 
-                q = f'''
-                  insert into employees (id,first_name,middle_name,last_name,hire_date,code,user_id,color)
-                  values ($1,$2,$3,$4,$5,$6,$7,$8)
-                  on conflict (id) do update set {", ".join([f"{k} = excluded.{k}" for k in tkeys[1:]])}
-                  returning id;
-                '''
-                await pg_conn.fetch(q, *[record[k] for k in ekeys], user_id, color)
+                if user_record:
+                    user_id = user_record['id']
+
+                    q = f'''
+                      insert into employees (id,first_name,middle_name,last_name,hire_date,code,user_id,color)
+                      values ($1,$2,$3,$4,$5,$6,$7,$8)
+                      on conflict (id) do update set {", ".join([f"{k} = excluded.{k}" for k in tkeys[1:]])}
+                      returning id;
+                    '''
+                    await pg_conn.fetch(q, *[record[k] for k in ekeys], user_id, color)
 
 
-                count += 1
+                    count += 1
     logging.info(f'inserted/updated {count} employees')
 
 
