@@ -162,7 +162,7 @@ async def flag_shifts():
 
 
 def reset_tz(dt: datetime):
-    return tz.localize(dt).astimezone(pytz.UTC).replace(tzinfo=None)
+    return tz.localize(dt, is_dst=True).astimezone(pytz.UTC).replace(tzinfo=None)
 
 
 def get_sunday(dt: datetime):
@@ -219,12 +219,12 @@ async def main(config):
                 await cursor.execute('select Id,StartTime from tam.polllog order by StartTime desc limit 4')
                 if latest_poll:
                     await cursor.execute('select Id,StartTime from tam.polllog where StartTime > %s order by StartTime desc',
-                            (latest_poll + tz.utcoffset(latest_poll),))
+                            (latest_poll + tz.utcoffset(latest_poll, is_dst=True),))
                 else:
                     await cursor.execute('select Id,StartTime from tam.polllog order by StartTime desc')
                     
                 if cursor.rowcount:
-                    polls = [(_id, tz.localize(date).astimezone(pytz.UTC).replace(tzinfo=None))
+                    polls = [(_id, reset_tz(date))
                         for _id, date, in await cursor.fetchall()]
                     logging.info(f'got {len(polls)} new polls')
                     latest_poll = polls[0][1]
